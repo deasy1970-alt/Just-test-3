@@ -247,21 +247,40 @@ app.post('/connect', async (req, res) => {
       isConnected = false;
       console.log(`❌ Disconnected from @${username}`);
       broadcast({ type: 'tiktok_disconnected' });
+      // Auto reconnect setelah 10 detik
+      setTimeout(() => {
+        if (!isConnected && tiktokConnection) {
+          console.log(`🔄 Auto reconnecting to @${username}...`);
+          tiktokConnection.connect().catch(e => console.error('Reconnect failed:', e.message));
+        }
+      }, 10000);
     });
 
     tiktokConnection.on('error', (err) => {
-      console.error('TikTok error:', err.message || err);
-      broadcast({ type: 'error', message: err.message || 'Connection error' });
+      const msg = (err && (err.message || err.info || JSON.stringify(err))) || 'Connection error';
+      console.error('TikTok error:', msg);
+      broadcast({ type: 'error', message: msg });
     });
 
-    await tiktokConnection.connect();
+    // Connect dengan timeout 15 detik
+    const connectPromise = tiktokConnection.connect();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Connection timeout - pastikan kamu sedang LIVE')), 15000)
+    );
+
+    await Promise.race([connectPromise, timeoutPromise]);
     currentUsername = username;
     isConnected = true;
 
     res.json({ success: true, message: `Connected to @${username}` });
   } catch (err) {
-    console.error('Connect error:', err.message);
-    res.status(500).json({ error: err.message || 'Failed to connect' });
+    const errMsg = (err && err.message) || 'Failed to connect';
+    console.error('Connect error:', errMsg);
+    // Tetap kirim response agar frontend tidak hang
+    if (!res.headersSent) {
+      res.status(500).json({ error: errMsg });
+    }
+    broadcast({ type: 'error', message: errMsg });
   }
 });
 
@@ -282,9 +301,11 @@ app.get('/status', (req, res) => {
   res.json({ connected: isConnected, username: currentUsername });
 });
 
-// ── Health check (Railway needs this) ──
+// ── Serve frontend ──
+const path = require('path');
+app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: 'TikTok Map Tracker', connected: isConnected, username: currentUsername });
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
