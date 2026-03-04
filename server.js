@@ -2,7 +2,16 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const cors = require('cors');
 const http = require('http');
-const { WebcastPushConnection } = require('tiktok-live-connector');
+
+// Safe load tiktok-live-connector
+let WebcastPushConnection;
+try {
+  WebcastPushConnection = require('tiktok-live-connector').WebcastPushConnection;
+  console.log('✅ tiktok-live-connector loaded');
+} catch(e) {
+  console.error('❌ tiktok-live-connector failed to load:', e.message);
+  WebcastPushConnection = null;
+}
 
 const app = express();
 app.use(cors());
@@ -214,6 +223,9 @@ app.post('/connect', async (req, res) => {
   }
 
   try {
+    if (!WebcastPushConnection) {
+      return res.status(500).json({ error: 'tiktok-live-connector not available. Check server logs.' });
+    }
     console.log(`Connecting to @${username}...`);
     tiktokConnection = new WebcastPushConnection(username, {
       processInitialData: false,
