@@ -1,293 +1,539 @@
-const express = require('express');
-const { WebSocketServer } = require('ws');
-const cors = require('cors');
-const http = require('http');
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TikTok Live Map Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c27;
+    --accent: #fe2c55;
+    --accent2: #25f4ee;
+    --gold: #ffd700;
+    --green: #00e676;
+    --text: #f0f0ff;
+    --muted: #6b6b8a;
+    --border: rgba(255,255,255,0.08);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { background:var(--bg); color:var(--text); font-family:'Space Mono',monospace; min-height:100vh; overflow-x:hidden; }
 
-// Safe load tiktok-live-connector
-let WebcastPushConnection;
-try {
-  WebcastPushConnection = require('tiktok-live-connector').WebcastPushConnection;
-  console.log('✅ tiktok-live-connector loaded');
-} catch(e) {
-  console.error('❌ tiktok-live-connector failed to load:', e.message);
-  WebcastPushConnection = null;
+  /* ─── SETUP ─── */
+  #setup-screen {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:100vh; padding:24px;
+    background: radial-gradient(ellipse at 50% 0%, rgba(254,44,85,0.18) 0%, transparent 70%),
+                radial-gradient(ellipse at 80% 100%, rgba(37,244,238,0.12) 0%, transparent 60%), var(--bg);
+  }
+  .logo-wrap { display:flex; flex-direction:column; align-items:center; margin-bottom:32px; }
+  .logo-icon {
+    width:72px; height:72px; background:linear-gradient(135deg,var(--accent),#ff006e);
+    border-radius:20px; display:flex; align-items:center; justify-content:center; font-size:32px;
+    box-shadow:0 0 40px rgba(254,44,85,0.4); margin-bottom:14px;
+    animation:pulse-logo 2s ease-in-out infinite;
+  }
+  @keyframes pulse-logo { 0%,100%{box-shadow:0 0 40px rgba(254,44,85,0.4)} 50%{box-shadow:0 0 70px rgba(254,44,85,0.65)} }
+  .logo-title { font-family:'Syne',sans-serif; font-size:26px; font-weight:800; background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .logo-sub { font-size:11px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; margin-top:4px; }
+
+  .setup-card { width:100%; max-width:400px; background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:28px 22px; }
+  .setup-card h2 { font-family:'Syne',sans-serif; font-size:18px; font-weight:700; margin-bottom:6px; }
+  .setup-card p { font-size:11px; color:var(--muted); margin-bottom:22px; line-height:1.7; }
+
+  .input-group { margin-bottom:14px; }
+  .input-label { font-size:10px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-bottom:7px; display:block; }
+  .input-wrap { position:relative; }
+  .input-prefix { position:absolute; left:13px; top:50%; transform:translateY(-50%); color:var(--accent); font-size:15px; font-weight:700; }
+
+  input[type="text"] {
+    width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:12px;
+    padding:13px 13px 13px 30px; color:var(--text); font-family:'Space Mono',monospace; font-size:14px; outline:none;
+    transition:border-color .2s, box-shadow .2s;
+  }
+  input[type="text"]:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(254,44,85,.15); }
+
+  .server-input input { padding-left:13px; }
+
+  .btn-start {
+    width:100%; padding:15px; background:linear-gradient(135deg,var(--accent),#ff006e);
+    border:none; border-radius:12px; color:white; font-family:'Syne',sans-serif; font-size:16px;
+    font-weight:800; cursor:pointer; box-shadow:0 4px 20px rgba(254,44,85,.35); margin-top:8px;
+    transition:all .2s;
+  }
+  .btn-start:active { transform:scale(.97); }
+
+  /* ─── APP ─── */
+  #app-screen { display:none; flex-direction:column; height:100vh; }
+
+  .top-bar {
+    background:var(--surface); border-bottom:1px solid var(--border);
+    padding:10px 14px; display:flex; align-items:center; justify-content:space-between;
+    flex-shrink:0; z-index:100;
+  }
+  .live-badge {
+    display:flex; align-items:center; gap:7px;
+    background:rgba(254,44,85,.15); border:1px solid rgba(254,44,85,.3);
+    border-radius:20px; padding:5px 11px;
+  }
+  .live-dot { width:8px; height:8px; background:var(--accent); border-radius:50%; animation:blink 1s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+  .live-text { font-size:11px; font-weight:700; color:var(--accent); letter-spacing:1px; }
+
+  .streamer-info { display:flex; flex-direction:column; align-items:center; }
+  .streamer-name { font-family:'Syne',sans-serif; font-size:14px; font-weight:700; }
+  .streamer-handle { font-size:10px; color:var(--muted); }
+
+  /* Connection indicator */
+  .conn-indicator {
+    display:flex; align-items:center; gap:5px;
+    background:var(--surface2); border-radius:20px; padding:4px 10px;
+    font-size:10px; cursor:pointer; border:1px solid var(--border);
+    transition:all .2s;
+  }
+  .conn-dot { width:7px; height:7px; border-radius:50%; background:var(--muted); transition:background .3s; }
+  .conn-dot.connected { background:var(--green); box-shadow:0 0 8px var(--green); }
+  .conn-dot.connecting { background:var(--gold); animation:blink .6s ease-in-out infinite; }
+  .conn-dot.error { background:var(--accent); }
+  .conn-label { color:var(--text); }
+
+  #map { flex:1; z-index:1; }
+  .leaflet-tile-pane { filter:brightness(.85) saturate(.7) hue-rotate(180deg) invert(1); }
+
+  /* Feed */
+  .bottom-panel {
+    background:var(--surface); border-top:1px solid var(--border);
+    padding:10px 14px; max-height:190px; overflow-y:auto; flex-shrink:0;
+  }
+  .panel-title { font-size:10px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
+  .feed-list { display:flex; flex-direction:column; gap:7px; }
+  .feed-item {
+    display:flex; align-items:center; gap:9px; background:var(--surface2);
+    border-radius:10px; padding:9px 11px; animation:slide-in .4s cubic-bezier(.16,1,.3,1);
+    border-left:3px solid transparent;
+  }
+  @keyframes slide-in { from{opacity:0;transform:translateX(-18px)} to{opacity:1;transform:translateX(0)} }
+  .feed-item.new { border-left-color:var(--accent); }
+  .feed-avatar {
+    width:30px; height:30px; border-radius:50%;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:700; flex-shrink:0; color:white;
+  }
+  .feed-info { flex:1; min-width:0; }
+  .feed-username { font-size:12px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .feed-location { font-size:10px; color:var(--muted); margin-top:2px; }
+  .feed-gift { font-size:17px; flex-shrink:0; }
+  .empty-state { text-align:center; padding:18px; color:var(--muted); font-size:11px; line-height:1.7; }
+
+  /* Toast */
+  #toast {
+    position:fixed; top:72px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:var(--surface); border:1px solid rgba(254,44,85,.4); border-radius:12px;
+    padding:11px 18px; z-index:9999; display:flex; align-items:center; gap:10px;
+    opacity:0; transition:all .3s cubic-bezier(.16,1,.3,1); pointer-events:none; max-width:92vw;
+  }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  #toast .t-emoji { font-size:20px; }
+  #toast .t-text { font-size:12px; line-height:1.4; }
+  #toast .t-user { font-weight:700; color:var(--accent); }
+
+  /* Wrong gift alert */
+  #wrong-gift-alert {
+    position:fixed; bottom:0; left:0; right:0;
+    background:linear-gradient(135deg, #1a0a0f, #2a0515);
+    border-top:2px solid var(--accent);
+    padding:0 18px;
+    z-index:9998;
+    max-height:0; overflow:hidden;
+    transition:max-height .4s cubic-bezier(.16,1,.3,1), padding .4s;
+  }
+  #wrong-gift-alert.show {
+    max-height:120px;
+    padding:16px 18px;
+  }
+  .wga-inner {
+    display:flex; align-items:center; gap:14px;
+  }
+  .wga-icon {
+    font-size:28px; flex-shrink:0;
+    animation: wga-shake .4s ease-in-out;
+  }
+  @keyframes wga-shake {
+    0%,100%{transform:rotate(0)} 25%{transform:rotate(-8deg)} 75%{transform:rotate(8deg)}
+  }
+  .wga-body { flex:1; }
+  .wga-title {
+    font-family:'Syne',sans-serif; font-size:15px; font-weight:800;
+    color:var(--accent); letter-spacing:.5px;
+    animation: wga-pulse 1s ease-in-out infinite;
+  }
+  @keyframes wga-pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+  .wga-sub { font-size:11px; color:var(--muted); margin-top:3px; }
+  .wga-user { color:var(--text); font-weight:700; }
+
+  /* Popup */
+  .leaflet-popup-content-wrapper { background:#13131a!important; color:#f0f0ff!important; border:1px solid rgba(255,255,255,.1)!important; border-radius:10px!important; box-shadow:0 4px 20px rgba(0,0,0,.5)!important; }
+  .leaflet-popup-tip { background:#13131a!important; }
+  .leaflet-popup-content { font-family:'Space Mono',monospace; font-size:12px; }
+  .leaflet-control-zoom a { background:#13131a!important; color:#f0f0ff!important; border-color:rgba(255,255,255,.1)!important; }
+
+  /* Modal reconnect */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:999; display:none; align-items:flex-end; justify-content:center; }
+  .modal-overlay.show { display:flex; }
+  .modal-box { background:var(--surface); border:1px solid var(--border); border-radius:20px 20px 0 0; padding:24px 22px 36px; width:100%; max-width:440px; }
+  .modal-box h3 { font-family:'Syne',sans-serif; font-size:16px; font-weight:700; margin-bottom:6px; }
+  .modal-box p { font-size:11px; color:var(--muted); margin-bottom:18px; line-height:1.6; }
+  .modal-btns { display:flex; gap:10px; }
+  .btn-cancel { flex:1; padding:13px; background:var(--surface2); border:1px solid var(--border); border-radius:11px; color:var(--muted); font-family:'Syne',sans-serif; font-size:14px; font-weight:700; cursor:pointer; }
+  .btn-confirm { flex:2; padding:13px; background:linear-gradient(135deg,var(--accent),#ff006e); border:none; border-radius:11px; color:white; font-family:'Syne',sans-serif; font-size:14px; font-weight:800; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<!-- SETUP -->
+<div id="setup-screen">
+  <div class="logo-wrap">
+    <div class="logo-icon">📍</div>
+    <div class="logo-title">LiveMapTracker</div>
+    <div class="logo-sub">TikTok Gift · Real-time</div>
+  </div>
+
+  <div class="setup-card">
+    <h2>Mulai Live Session</h2>
+    <p>Enter your TikTok username & Railway server URL. Viewers' ROSA gifts will automatically appear on the map.</p>
+
+    <div class="input-group">
+      <label class="input-label">Username TikTok</label>
+      <div class="input-wrap">
+        <span class="input-prefix">@</span>
+        <input type="text" id="username-input" placeholder="your_username" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+
+    <button class="btn-start" onclick="startApp()">🚀 Start Live Tracker</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app-screen">
+  <div class="top-bar">
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      <div class="live-text">LIVE</div>
+    </div>
+    <div class="streamer-info">
+      <div class="streamer-name" id="display-name"></div>
+      <div class="streamer-handle" id="display-handle"></div>
+    </div>
+    <div class="conn-indicator" onclick="showReconnectModal()" id="conn-indicator">
+      <div class="conn-dot" id="conn-dot"></div>
+      <div class="conn-label" id="conn-label">—</div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="bottom-panel">
+    <div class="panel-title">
+      <span>🌹 GIFT FEED</span>
+      <span id="feed-count" style="color:var(--accent2)">0 viewers</span>
+    </div>
+    <div class="feed-list" id="feed-list">
+      <div class="empty-state">Menunggu gift ROSA dari viewers...<br>Pastikan server sudah terhubung.</div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast">
+  <div class="t-emoji">🌹</div>
+  <div class="t-text">
+    <div><span class="t-user" id="t-user"></span> kirim gift!</div>
+    <div id="t-loc" style="color:#6b6b8a;font-size:10px"></div>
+  </div>
+</div>
+
+<!-- WRONG GIFT ALERT -->
+<div id="wrong-gift-alert">
+  <div class="wga-inner">
+    <div class="wga-icon">🌹</div>
+    <div class="wga-body">
+      <div class="wga-title">ROSA = LOCATE YOU</div>
+      <div class="wga-sub">Send the <strong style="color:var(--accent2)">ROSA (10 coins)</strong> gift to get pinned on the map! · <span class="wga-user" id="wga-user"></span></div>
+    </div>
+  </div>
+</div>
+
+<!-- RECONNECT MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <h3>⚡ Reconnect Server</h3>
+    <p>Connection to TikTok live or server was lost. Click Reconnect to try again.</p>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-confirm" onclick="reconnect()">🔄 Reconnect</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── STATE ──
+let map, ws, serverUrl = '', streamerUser = '';
+let pinCount = 0;
+let wsReconnectTimer = null;
+
+// ── SETUP ──
+function startApp() {
+  const u = document.getElementById('username-input').value.trim().replace(/^@/,'');
+  if (!u) { shake('username-input'); return; }
+
+  streamerUser = u;
+  // Auto-detect server URL (same origin)
+  serverUrl = window.location.origin;
+
+  document.getElementById('display-name').textContent = u;
+  document.getElementById('display-handle').textContent = '@' + u;
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'flex';
+
+  initMap();
+  connectWebSocket();
+  connectTikTok();
 }
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+function shake(id) {
+  const el = document.getElementById(id);
+  el.style.borderColor = 'var(--accent)';
+  el.style.animation = 'none';
+  setTimeout(() => el.style.animation = '', 100);
+}
 
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+// ── MAP ──
+function initMap() {
+  map = L.map('map', { center: [-2.5, 118], zoom: 4, zoomControl: true, attributionControl: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+}
 
-// ── State ──
-let tiktokConnection = null;
-let connectedClients = new Set();
-let currentUsername = null;
-let isConnected = false;
+// ── WEBSOCKET ──
+function connectWebSocket() {
+  setConnStatus('connecting', 'Connecting...');
 
-// ── Data Wilayah ──
-const worldRegions = {
-  ID: {
-    name: 'Indonesia', flag: '🇮🇩',
-    cities: [
-      { name: 'Jakarta',    lat: -6.2088,  lng: 106.8456 },
-      { name: 'Surabaya',   lat: -7.2575,  lng: 112.7521 },
-      { name: 'Bandung',    lat: -6.9175,  lng: 107.6191 },
-      { name: 'Medan',      lat: 3.5952,   lng: 98.6722  },
-      { name: 'Makassar',   lat: -5.1477,  lng: 119.4327 },
-      { name: 'Palembang',  lat: -2.9761,  lng: 104.7754 },
-      { name: 'Semarang',   lat: -6.9932,  lng: 110.4203 },
-      { name: 'Yogyakarta', lat: -7.7956,  lng: 110.3695 },
-      { name: 'Denpasar',   lat: -8.6705,  lng: 115.2126 },
-      { name: 'Malang',     lat: -7.9797,  lng: 112.6304 },
-      { name: 'Tangerang',  lat: -6.1783,  lng: 106.6319 },
-      { name: 'Depok',      lat: -6.4025,  lng: 106.7942 },
-      { name: 'Bekasi',     lat: -6.2383,  lng: 106.9756 },
-      { name: 'Bogor',      lat: -6.5971,  lng: 106.8060 },
-      { name: 'Pekanbaru',  lat: 0.5071,   lng: 101.4478 },
-      { name: 'Batam',      lat: 1.0457,   lng: 104.0305 },
-      { name: 'Balikpapan', lat: -1.2675,  lng: 116.8289 },
-      { name: 'Samarinda',  lat: -0.5022,  lng: 117.1536 },
-      { name: 'Banjarmasin',lat: -3.3194,  lng: 114.5908 },
-      { name: 'Pontianak',  lat: -0.0263,  lng: 109.3425 },
-      { name: 'Manado',     lat: 1.4748,   lng: 124.8421 },
-      { name: 'Padang',     lat: -0.9471,  lng: 100.4172 },
-      { name: 'Aceh',       lat: 5.5483,   lng: 95.3238  },
-      { name: 'Jayapura',   lat: -2.5916,  lng: 140.6690 },
-      { name: 'Kupang',     lat: -10.1772, lng: 123.6070 },
-    ]
-  },
-  MY: { name: 'Malaysia',     flag: '🇲🇾', cities: [{ name: 'Kuala Lumpur', lat: 3.1390, lng: 101.6869 }, { name: 'Penang', lat: 5.4141, lng: 100.3288 }, { name: 'Johor Bahru', lat: 1.4927, lng: 103.7414 }] },
-  SG: { name: 'Singapore',    flag: '🇸🇬', cities: [{ name: 'Singapore', lat: 1.3521, lng: 103.8198 }] },
-  TH: { name: 'Thailand',     flag: '🇹🇭', cities: [{ name: 'Bangkok', lat: 13.7563, lng: 100.5018 }, { name: 'Chiang Mai', lat: 18.7883, lng: 98.9853 }] },
-  PH: { name: 'Philippines',  flag: '🇵🇭', cities: [{ name: 'Manila', lat: 14.5995, lng: 120.9842 }, { name: 'Cebu', lat: 10.3157, lng: 123.8854 }] },
-  VN: { name: 'Vietnam',      flag: '🇻🇳', cities: [{ name: 'Ho Chi Minh City', lat: 10.8231, lng: 106.6297 }, { name: 'Hanoi', lat: 21.0285, lng: 105.8542 }] },
-  JP: { name: 'Japan',        flag: '🇯🇵', cities: [{ name: 'Tokyo', lat: 35.6762, lng: 139.6503 }, { name: 'Osaka', lat: 34.6937, lng: 135.5023 }] },
-  KR: { name: 'South Korea',  flag: '🇰🇷', cities: [{ name: 'Seoul', lat: 37.5665, lng: 126.9780 }, { name: 'Busan', lat: 35.1796, lng: 129.0756 }] },
-  US: { name: 'United States',flag: '🇺🇸', cities: [{ name: 'New York', lat: 40.7128, lng: -74.0060 }, { name: 'Los Angeles', lat: 34.0522, lng: -118.2437 }] },
-  GB: { name: 'United Kingdom',flag:'🇬🇧', cities: [{ name: 'London', lat: 51.5074, lng: -0.1278 }] },
-  AU: { name: 'Australia',    flag: '🇦🇺', cities: [{ name: 'Sydney', lat: -33.8688, lng: 151.2093 }, { name: 'Melbourne', lat: -37.8136, lng: 144.9631 }] },
-  SA: { name: 'Saudi Arabia', flag: '🇸🇦', cities: [{ name: 'Riyadh', lat: 24.7136, lng: 46.6753 }, { name: 'Jeddah', lat: 21.4858, lng: 39.1925 }] },
-  IN: { name: 'India',        flag: '🇮🇳', cities: [{ name: 'Mumbai', lat: 19.0760, lng: 72.8777 }, { name: 'Delhi', lat: 28.6139, lng: 77.2090 }] },
-  EG: { name: 'Egypt',        flag: '🇪🇬', cities: [{ name: 'Cairo', lat: 30.0444, lng: 31.2357 }] },
-  TR: { name: 'Turkey',       flag: '🇹🇷', cities: [{ name: 'Istanbul', lat: 41.0082, lng: 28.9784 }] },
-  BR: { name: 'Brazil',       flag: '🇧🇷', cities: [{ name: 'São Paulo', lat: -23.5505, lng: -46.6333 }] },
-};
+  const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/';
 
-// Map TikTok locale → country code
-const localeToCountry = {
-  'id': 'ID', 'id-ID': 'ID',
-  'ms': 'MY', 'ms-MY': 'MY',
-  'en-SG': 'SG',
-  'th': 'TH', 'th-TH': 'TH',
-  'tl': 'PH', 'fil': 'PH',
-  'vi': 'VN', 'vi-VN': 'VN',
-  'ja': 'JP', 'ja-JP': 'JP',
-  'ko': 'KR', 'ko-KR': 'KR',
-  'en-US': 'US', 'en': 'US',
-  'en-GB': 'GB',
-  'en-AU': 'AU',
-  'ar': 'SA', 'ar-SA': 'SA',
-  'hi': 'IN', 'hi-IN': 'IN',
-  'ar-EG': 'EG',
-  'tr': 'TR', 'tr-TR': 'TR',
-  'pt': 'BR', 'pt-BR': 'BR',
-};
-
-// Weight: Indonesia 60%
-const countryWeights = [
-  ...Array(60).fill('ID'),
-  ...Array(8).fill('MY'),
-  ...Array(4).fill('SG'),
-  ...Array(4).fill('TH'),
-  ...Array(4).fill('PH'),
-  ...Array(3).fill('VN'),
-  ...Array(3).fill('JP'),
-  ...Array(3).fill('KR'),
-  ...Array(3).fill('US'),
-  ...Array(2).fill('GB'),
-  ...Array(2).fill('AU'),
-  ...Array(2).fill('SA'),
-  ...Array(2).fill('IN'),
-];
-
-function getLocation(user) {
-  // Coba deteksi dari locale/region user TikTok
-  let code = null;
-  if (user.locale) code = localeToCountry[user.locale] || localeToCountry[user.locale.split('-')[0]];
-  if (!code && user.region) code = user.region.toUpperCase();
-  if (!code || !worldRegions[code]) {
-    // Fallback ke random weighted
-    code = countryWeights[Math.floor(Math.random() * countryWeights.length)];
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch(e) {
+    setConnStatus('error', 'Error');
+    return;
   }
 
-  const region = worldRegions[code];
-  const city = region.cities[Math.floor(Math.random() * region.cities.length)];
-  const jitter = () => (Math.random() - 0.5) * 0.4;
+  ws.onopen = () => {
+    console.log('WS connected');
+    clearTimeout(wsReconnectTimer);
+  };
 
-  return {
-    countryCode: code,
-    countryName: region.name,
-    flag: region.flag,
-    city: city.name,
-    lat: city.lat + jitter(),
-    lng: city.lng + jitter(),
+  ws.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      handleMessage(data);
+    } catch(err) { console.error('WS parse error', err); }
+  };
+
+  ws.onclose = () => {
+    setConnStatus('error', 'Terputus');
+    wsReconnectTimer = setTimeout(() => {
+      connectWebSocket();
+    }, 5000);
+  };
+
+  ws.onerror = () => {
+    setConnStatus('error', 'Error');
   };
 }
 
-// ── Broadcast ke semua WS clients ──
-function broadcast(data) {
-  const msg = JSON.stringify(data);
-  connectedClients.forEach(ws => {
-    if (ws.readyState === 1) ws.send(msg);
-  });
-}
+function handleMessage(data) {
+  switch(data.type) {
+    case 'tiktok_connected':
+      setConnStatus('connected', 'Live ✓');
+      showSystemToast(`✅ Connected to @${data.username}`);
+      break;
 
-// ── WebSocket ──
-wss.on('connection', (ws) => {
-  connectedClients.add(ws);
-  console.log('Client connected, total:', connectedClients.size);
+    case 'tiktok_disconnected':
+      setConnStatus('error', 'TikTok Off');
+      break;
 
-  // Kirim status saat ini
-  ws.send(JSON.stringify({
-    type: 'status',
-    connected: isConnected,
-    username: currentUsername
-  }));
+    case 'status':
+      if (data.connected) setConnStatus('connected', 'Live ✓');
+      else setConnStatus('error', 'Offline');
+      break;
 
-  ws.on('close', () => {
-    connectedClients.delete(ws);
-    console.log('Client disconnected, total:', connectedClients.size);
-  });
-});
+    case 'gift':
+      onGift(data);
+      break;
 
-// ── Gift handler ──
-const TARGET_GIFT_NAME = 'rosa';  // nama gift (case-insensitive)
-const TARGET_GIFT_COINS = 10;     // nilai koin ROSA = 10
+    case 'wrong_gift':
+      showWrongGiftAlert(data.username);
+      break;
 
-function handleGift(data) {
-  try {
-    const giftName = (data.giftName || data.gift?.name || '').trim();
-    const coins = data.diamondCount ?? data.giftDetails?.diamondCount ?? null;
-
-    const user = data.user || {};
-    const username = user.uniqueId || user.nickname || 'viewer';
-
-    // Validasi 1: nama gift harus ROSA (case-insensitive)
-    const isRosaName = giftName.toLowerCase() === TARGET_GIFT_NAME;
-
-    // Validasi 2: nilai koin harus 10 (null = tidak diketahui, tetap lolos)
-    const isRosaCoins = coins === null || coins === TARGET_GIFT_COINS;
-
-    // Jika gift bukan ROSA atau koin salah → kirim peringatan ke frontend
-    if (!isRosaName || !isRosaCoins) {
-      console.log(`⚠️ Gift bukan ROSA dari @${username}: "${giftName}" (${coins} koin)`);
-      broadcast({
-        type: 'wrong_gift',
-        username,
-        giftName: giftName || '?',
-        giftCoins: coins ?? '?',
-      });
-      return;
-    }
-
-    const location = getLocation(user);
-    console.log(`🌹 Gift ROSA (10 koin) dari @${username} → ${location.city}, ${location.countryName}`);
-
-    broadcast({
-      type: 'gift',
-      username,
-      nickname: user.nickname || username,
-      giftName: giftName,
-      giftEmoji: '🌹',
-      giftCoins: TARGET_GIFT_COINS,
-      location,
-      timestamp: Date.now()
-    });
-  } catch (e) {
-    console.error('handleGift error:', e);
+    case 'error':
+      setConnStatus('error', 'Error');
+      showSystemToast('⚠️ ' + (data.message || 'Error'));
+      break;
   }
 }
 
-// ── REST API: Connect TikTok ──
-app.post('/connect', async (req, res) => {
-  const { username } = req.body;
-  if (!username) return res.status(400).json({ error: 'Username required' });
-
-  // Disconnect dulu kalau sudah ada
-  if (tiktokConnection) {
-    try { tiktokConnection.disconnect(); } catch(e) {}
-    tiktokConnection = null;
-    isConnected = false;
-  }
-
+// ── CONNECT TIKTOK via REST ──
+async function connectTikTok() {
   try {
-    if (!WebcastPushConnection) {
-      return res.status(500).json({ error: 'tiktok-live-connector not available. Check server logs.' });
+    const res = await fetch(serverUrl + '/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: streamerUser })
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      setConnStatus('error', 'Failed');
+      showSystemToast('❌ ' + (json.error || 'Connection failed'));
     }
-    console.log(`Connecting to @${username}...`);
-    tiktokConnection = new WebcastPushConnection(username, {
-      processInitialData: false,
-      enableExtendedGiftInfo: true,
-      enableWebsocketUpgrade: true,
-      requestPollingIntervalMs: 2000,
-    });
-
-    tiktokConnection.on('gift', handleGift);
-
-    tiktokConnection.on('connected', (state) => {
-      isConnected = true;
-      currentUsername = username;
-      console.log(`✅ Connected to @${username}`);
-      broadcast({ type: 'tiktok_connected', username });
-    });
-
-    tiktokConnection.on('disconnected', () => {
-      isConnected = false;
-      console.log(`❌ Disconnected from @${username}`);
-      broadcast({ type: 'tiktok_disconnected' });
-    });
-
-    tiktokConnection.on('error', (err) => {
-      console.error('TikTok error:', err.message || err);
-      broadcast({ type: 'error', message: err.message || 'Connection error' });
-    });
-
-    await tiktokConnection.connect();
-    currentUsername = username;
-    isConnected = true;
-
-    res.json({ success: true, message: `Connected to @${username}` });
-  } catch (err) {
-    console.error('Connect error:', err.message);
-    res.status(500).json({ error: err.message || 'Failed to connect' });
+  } catch(e) {
+    setConnStatus('error', 'Server Error');
+    showSystemToast('❌ Server unreachable');
   }
-});
+}
 
-// ── REST API: Disconnect ──
-app.post('/disconnect', (req, res) => {
-  if (tiktokConnection) {
-    try { tiktokConnection.disconnect(); } catch(e) {}
-    tiktokConnection = null;
+async function reconnect() {
+  closeModal();
+  setConnStatus('connecting', 'Reconnecting...');
+  if (ws) { try { ws.close(); } catch(e) {} }
+  connectWebSocket();
+  await connectTikTok();
+}
+
+// ── GIFT EVENT ──
+function onGift(data) {
+  const { username, location, giftEmoji } = data;
+
+  addPin(username, location, giftEmoji || '🌹');
+  addToFeed(username, location, giftEmoji || '🌹');
+  showToast(username, location);
+}
+
+// ── PIN ──
+function addPin(username, loc, emoji) {
+  const markerHtml = `
+    <div style="
+      background:linear-gradient(135deg,#fe2c55,#ff006e);
+      border:2px solid white; border-radius:50% 50% 50% 0;
+      width:32px; height:32px; transform:rotate(-45deg);
+      box-shadow:0 2px 12px rgba(254,44,85,.7);
+      display:flex; align-items:center; justify-content:center;
+    ">
+      <span style="transform:rotate(45deg);font-size:14px;">${emoji}</span>
+    </div>`;
+
+  const icon = L.divIcon({ html: markerHtml, iconSize: [32,32], iconAnchor: [16,32], className: '' });
+
+  L.marker([loc.lat, loc.lng], { icon })
+    .addTo(map)
+    .bindPopup(`
+      <div style="text-align:center;padding:4px 0">
+        <div style="font-size:20px">${loc.flag}</div>
+        <div style="font-weight:700;font-size:13px;margin:4px 0">@${username}</div>
+        <div style="color:#6b6b8a;font-size:11px">${loc.city}, ${loc.countryName}</div>
+        <div style="color:#ffd700;font-size:11px;margin-top:4px">${emoji} ROSA · 10 koin</div>
+      </div>
+    `);
+
+  const zoom = loc.countryCode === 'ID' ? 8 : 5;
+  map.flyTo([loc.lat, loc.lng], zoom, { duration: 1.5 });
+  addRipple(loc.lat, loc.lng);
+}
+
+function addRipple(lat, lng) {
+  if (!document.getElementById('ripple-style')) {
+    const s = document.createElement('style');
+    s.id = 'ripple-style';
+    s.textContent = `.rw{position:relative;width:60px;height:60px}.rp{position:absolute;border-radius:50%;border:2px solid rgba(254,44,85,.6)}.r1{width:20px;height:20px;top:20px;left:20px;animation:rpl 1.5s ease-out infinite}.r2{width:20px;height:20px;top:20px;left:20px;animation:rpl 1.5s ease-out .4s infinite}.r3{width:20px;height:20px;top:20px;left:20px;animation:rpl 1.5s ease-out .8s infinite}@keyframes rpl{0%{transform:scale(1);opacity:1}100%{transform:scale(4);opacity:0}}`;
+    document.head.appendChild(s);
   }
-  isConnected = false;
-  currentUsername = null;
-  broadcast({ type: 'tiktok_disconnected' });
-  res.json({ success: true });
-});
+  const ri = L.divIcon({ html: `<div class="rw"><div class="rp r1"></div><div class="rp r2"></div><div class="rp r3"></div></div>`, iconSize: [60,60], iconAnchor: [30,30], className: '' });
+  const rm = L.marker([lat, lng], { icon: ri, interactive: false }).addTo(map);
+  setTimeout(() => map.removeLayer(rm), 2500);
+}
 
-// ── REST API: Status ──
-app.get('/status', (req, res) => {
-  res.json({ connected: isConnected, username: currentUsername });
-});
+// ── FEED ──
+function addToFeed(username, location, emoji) {
+  pinCount++;
+  document.getElementById('feed-count').textContent = pinCount + ' viewers';
 
-// ── Health check (Railway needs this) ──
-app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: 'TikTok Map Tracker', connected: isConnected, username: currentUsername });
-});
+  const el = document.getElementById('feed-list');
+  if (el.querySelector('.empty-state')) el.innerHTML = '';
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+  const div = document.createElement('div');
+  div.className = 'feed-item new';
+  div.innerHTML = `
+    <div class="feed-avatar">${username.charAt(0).toUpperCase()}</div>
+    <div class="feed-info">
+      <div class="feed-username">@${username}</div>
+      <div class="feed-location">${location.flag} ${location.city}, ${location.countryName}</div>
+    </div>
+    <div class="feed-gift">${emoji}</div>
+  `;
+  el.insertBefore(div, el.firstChild);
+  if (el.children.length > 20) el.removeChild(el.lastChild);
+  setTimeout(() => div.classList.remove('new'), 500);
+}
+
+// ── TOAST ──
+function showToast(username, location) {
+  document.getElementById('t-user').textContent = '@' + username;
+  document.getElementById('t-loc').textContent = `${location.flag} ${location.city}, ${location.countryName}`;
+  const t = document.getElementById('toast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+let sysToastTimer;
+function showSystemToast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('t-user').textContent = msg;
+  document.getElementById('t-loc').textContent = '';
+  t.querySelector('.t-emoji').textContent = 'ℹ️';
+  t.classList.add('show');
+  clearTimeout(sysToastTimer);
+  sysToastTimer = setTimeout(() => {
+    t.classList.remove('show');
+    t.querySelector('.t-emoji').textContent = '🌹';
+  }, 3000);
+}
+
+// ── CONN STATUS ──
+function setConnStatus(status, label) {
+  const dot = document.getElementById('conn-dot');
+  const lbl = document.getElementById('conn-label');
+  dot.className = 'conn-dot ' + status;
+  lbl.textContent = label;
+}
+
+// ── MODAL ──
+function showReconnectModal() { document.getElementById('modal-overlay').classList.add('show'); }
+// ── WRONG GIFT ALERT ──
+let wgaTimer;
+function showWrongGiftAlert(username) {
+  const el = document.getElementById('wrong-gift-alert');
+  document.getElementById('wga-user').textContent = username ? '@' + username + ' — try sending ROSA!' : '';
+  el.classList.add('show');
+  clearTimeout(wgaTimer);
+  wgaTimer = setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('show'); }
+</script>
+</body>
+</html>
