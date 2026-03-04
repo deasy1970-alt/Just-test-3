@@ -216,6 +216,34 @@
       </div>
     </div>
 
+    <div class="input-group">
+      <label class="input-label">Session ID <span style="color:var(--accent2)">(opsional tapi disarankan)</span></label>
+      <div class="input-wrap">
+        <input type="text" id="session-input" placeholder="paste sessionid disini..." autocomplete="off" spellcheck="false" style="padding-left:13px;font-size:11px;">
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.6;">
+        Cara dapat Session ID: Buka <strong style="color:var(--accent2)">tiktok.com</strong> di browser → Login → Klik tombol 🔑 di bawah untuk panduan
+      </div>
+    </div>
+
+    <details style="margin-bottom:14px;background:var(--surface2);border-radius:10px;padding:10px 12px;border:1px solid var(--border);">
+      <summary style="font-size:11px;color:var(--accent2);cursor:pointer;font-weight:700;">🔑 Cara dapat Session ID</summary>
+      <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.8;">
+        1. Buka <strong style="color:var(--text)">tiktok.com</strong> di Chrome HP<br>
+        2. Login akun TikTok kamu<br>
+        3. Ketuk ⋮ (titik tiga) → <strong style="color:var(--text)">More tools</strong> → <strong style="color:var(--text)">Developer tools</strong><br>
+        4. Pilih tab <strong style="color:var(--text)">Application</strong> → <strong style="color:var(--text)">Cookies</strong> → <strong style="color:var(--text)">tiktok.com</strong><br>
+        5. Cari <strong style="color:var(--accent)">sessionid</strong> → copy nilainya<br>
+        6. Paste di kolom Session ID di atas
+      </div>
+    </details>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:11px;color:var(--muted);line-height:1.7;">
+        🔑 Untuk koneksi lebih stabil, <a href="/get-session.html" style="color:var(--accent2);font-weight:700;">ambil Session ID kamu di sini</a> terlebih dahulu. Session ID akan otomatis tersimpan.
+      </div>
+    </div>
+
     <button class="btn-start" onclick="startApp()">🚀 Start Live Tracker</button>
   </div>
 </div>
@@ -391,10 +419,11 @@ function handleMessage(data) {
 // ── CONNECT TIKTOK via REST ──
 async function connectTikTok() {
   try {
+    const sid = document.getElementById('session-input') ? document.getElementById('session-input').value.trim() : '';
     const res = await fetch(serverUrl + '/connect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: streamerUser })
+      body: JSON.stringify({ username: streamerUser, sessionId: sid || undefined })
     });
     const json = await res.json();
     if (!res.ok) {
