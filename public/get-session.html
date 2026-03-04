@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Get TikTok Session</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Space+Mono&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0f; --surface:#13131a; --surface2:#1c1c27; --accent:#fe2c55; --accent2:#25f4ee; --text:#f0f0ff; --muted:#6b6b8a; --border:rgba(255,255,255,0.08); }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Space Mono',monospace; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px;
+    background: radial-gradient(ellipse at 50% 0%, rgba(254,44,85,0.15) 0%, transparent 60%), var(--bg);
+  }
+  .card { width:100%; max-width:420px; background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:28px 22px; }
+  h1 { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; margin-bottom:6px; background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .sub { font-size:11px; color:var(--muted); margin-bottom:24px; line-height:1.7; }
+
+  .step { display:flex; gap:12px; margin-bottom:18px; align-items:flex-start; }
+  .step-num { width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#ff006e); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; color:white; }
+  .step-body { flex:1; }
+  .step-title { font-size:13px; font-weight:700; margin-bottom:4px; }
+  .step-desc { font-size:11px; color:var(--muted); line-height:1.6; }
+
+  .divider { border:none; border-top:1px solid var(--border); margin:20px 0; }
+
+  .input-label { font-size:10px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-bottom:7px; display:block; }
+  textarea {
+    width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:12px;
+    padding:12px; color:var(--text); font-family:'Space Mono',monospace; font-size:11px;
+    outline:none; resize:none; height:80px; transition:border-color .2s;
+  }
+  textarea:focus { border-color:var(--accent); }
+  textarea::placeholder { color:var(--muted); }
+
+  .btn {
+    width:100%; padding:14px; background:linear-gradient(135deg,var(--accent),#ff006e);
+    border:none; border-radius:12px; color:white; font-family:'Syne',sans-serif;
+    font-size:15px; font-weight:800; cursor:pointer; margin-top:12px;
+    box-shadow:0 4px 20px rgba(254,44,85,.35); transition:all .2s;
+  }
+  .btn:active { transform:scale(.97); }
+  .btn.success { background:linear-gradient(135deg,#00e676,#00b248); }
+
+  .result-box {
+    background:var(--surface2); border:1px solid rgba(37,244,238,.3); border-radius:12px;
+    padding:14px; margin-top:14px; display:none;
+  }
+  .result-box.show { display:block; }
+  .result-label { font-size:10px; color:var(--accent2); letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; }
+  .result-value { font-size:11px; color:var(--text); word-break:break-all; line-height:1.6; }
+  .copy-btn {
+    width:100%; padding:10px; background:var(--accent2); border:none; border-radius:10px;
+    color:#0a0a0f; font-family:'Syne',sans-serif; font-size:13px; font-weight:800;
+    cursor:pointer; margin-top:10px; transition:all .2s;
+  }
+  .copy-btn:active { transform:scale(.97); }
+
+  .warning { background:rgba(254,44,85,.1); border:1px solid rgba(254,44,85,.3); border-radius:10px; padding:12px; margin-top:14px; font-size:10px; color:var(--muted); line-height:1.7; }
+  .warning strong { color:var(--accent); }
+
+  .tiktok-btn {
+    width:100%; padding:14px; background:#010101; border:1px solid rgba(255,255,255,.15);
+    border-radius:12px; color:white; font-family:'Syne',sans-serif; font-size:14px;
+    font-weight:800; cursor:pointer; margin-top:10px; display:flex; align-items:center;
+    justify-content:center; gap:10px; text-decoration:none;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🔑 Ambil Session ID</h1>
+  <p class="sub">Ikuti langkah berikut untuk mendapatkan Session ID TikTok kamu. Session ID diperlukan agar app bisa connect ke TikTok Live kamu secara otomatis.</p>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Buka TikTok & Login</div>
+      <div class="step-desc">Tap tombol di bawah untuk buka TikTok. Pastikan sudah login dengan akun yang akan Live.</div>
+    </div>
+  </div>
+
+  <a class="tiktok-btn" href="https://www.tiktok.com" target="_blank">
+    <span>🎵</span> Buka TikTok.com
+  </a>
+
+  <hr class="divider">
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Copy Cookie dari TikTok</div>
+      <div class="step-desc">
+        Setelah login di TikTok, kembali ke halaman ini.<br><br>
+        Di Chrome HP, buka tab TikTok → ketuk address bar → ketik URL ini dan buka:<br><br>
+        <span style="color:var(--accent2);font-size:10px;word-break:break-all;">view-source:https://www.tiktok.com</span><br><br>
+        Atau lebih mudah: tap <strong style="color:var(--text)">⋮</strong> → <strong style="color:var(--text)">Share</strong> → <strong style="color:var(--text)">Copy link</strong> dari halaman profil TikTok kamu, lalu lihat panduan video di bawah.
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Paste Cookie di sini</div>
+      <div class="step-desc">Copy semua isi cookie dari browser kamu, paste di kotak ini. Session ID akan diekstrak otomatis.</div>
+    </div>
+  </div>
+
+  <label class="input-label">Paste Cookie TikTok</label>
+  <textarea id="cookie-input" placeholder="Paste cookie disini... (contoh: sessionid=abc123def456; tt_webid=...)"></textarea>
+
+  <button class="btn" onclick="extractSession()">🔍 Ekstrak Session ID</button>
+
+  <div class="result-box" id="result-box">
+    <div class="result-label">✅ Session ID Ditemukan</div>
+    <div class="result-value" id="result-value"></div>
+    <button class="copy-btn" onclick="copyAndSave()">📋 Copy & Simpan ke App</button>
+  </div>
+
+  <hr class="divider">
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Cara Mudah Dapat Cookie di Chrome HP</div>
+      <div class="step-desc">
+        1. Buka <strong style="color:var(--text)">tiktok.com</strong> di Chrome → login<br>
+        2. Tap address bar → tambah <strong style="color:var(--accent2)">view-source:</strong> di depan URL<br>
+        &nbsp;&nbsp;&nbsp;Jadi: <span style="color:var(--accent2)">view-source:https://tiktok.com</span><br>
+        3. Tekan Ctrl+F → cari <strong style="color:var(--accent)">sessionid</strong><br>
+        4. Copy nilai setelah <strong style="color:var(--accent)">sessionid=</strong> sampai tanda <strong style="color:var(--accent)">;</strong><br>
+        5. Paste langsung di kotak di atas
+      </div>
+    </div>
+  </div>
+
+  <div class="warning">
+    <strong>⚠️ Penting:</strong> Session ID ini seperti password. Jangan bagikan ke siapapun selain dipakai di app ini. Session ID akan disimpan di server Railway kamu sendiri.
+  </div>
+</div>
+
+<script>
+function extractSession() {
+  const input = document.getElementById('cookie-input').value.trim();
+  if (!input) return;
+
+  // Try extract sessionid from cookie string
+  let sessionId = null;
+
+  // Pattern 1: sessionid=VALUE;
+  const match1 = input.match(/sessionid=([a-zA-Z0-9_-]+)/);
+  if (match1) sessionId = match1[1];
+
+  // Pattern 2: just the raw value (user pasted only the value)
+  if (!sessionId && input.length > 20 && !input.includes('=') && !input.includes(' ')) {
+    sessionId = input;
+  }
+
+  if (sessionId) {
+    document.getElementById('result-value').textContent = sessionId;
+    document.getElementById('result-box').classList.add('show');
+    // Auto save to localStorage
+    localStorage.setItem('tiktok_session_id', sessionId);
+  } else {
+    alert('Session ID tidak ditemukan. Pastikan kamu paste cookie yang mengandung "sessionid=..."');
+  }
+}
+
+async function copyAndSave() {
+  const sid = document.getElementById('result-value').textContent;
+  if (!sid) return;
+
+  // Copy to clipboard
+  try {
+    await navigator.clipboard.writeText(sid);
+  } catch(e) {
+    // fallback
+    const el = document.createElement('textarea');
+    el.value = sid;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+  }
+
+  // Save to server
+  try {
+    const res = await fetch('/save-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: sid })
+    });
+    if (res.ok) {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = '✅ Tersimpan! Kembali ke app...';
+      btn.style.background = '#00e676';
+      setTimeout(() => { window.location.href = '/'; }, 1500);
+    }
+  } catch(e) {
+    alert('Session ID sudah dicopy! Paste di kolom Session ID di halaman utama.');
+    setTimeout(() => { window.location.href = '/'; }, 1000);
+  }
+}
+</script>
+</body>
+</html>
