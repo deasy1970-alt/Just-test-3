@@ -25,6 +25,7 @@ let tiktokConnection = null;
 let connectedClients = new Set();
 let currentUsername = null;
 let isConnected = false;
+let sessionId = null; // TikTok session cookie
 
 // ── Data Wilayah ──
 const worldRegions = {
@@ -212,8 +213,12 @@ function handleGift(data) {
 
 // ── REST API: Connect TikTok ──
 app.post('/connect', async (req, res) => {
-  const { username } = req.body;
+  const { username, sessionId: sid } = req.body;
   if (!username) return res.status(400).json({ error: 'Username required' });
+  if (sid) {
+    sessionId = sid;
+    console.log('🔑 Session ID updated');
+  }
 
   // Disconnect dulu kalau sudah ada
   if (tiktokConnection) {
@@ -227,12 +232,18 @@ app.post('/connect', async (req, res) => {
       return res.status(500).json({ error: 'tiktok-live-connector not available. Check server logs.' });
     }
     console.log(`Connecting to @${username}...`);
-    tiktokConnection = new WebcastPushConnection(username, {
+    // Gunakan sessionId jika tersedia untuk koneksi lebih stabil
+    const options = {
       processInitialData: false,
       enableExtendedGiftInfo: true,
       enableWebsocketUpgrade: true,
       requestPollingIntervalMs: 2000,
-    });
+    };
+    if (sessionId) {
+      options.sessionId = sessionId;
+      console.log('🔑 Using sessionId for auth');
+    }
+    tiktokConnection = new WebcastPushConnection(username, options);
 
     tiktokConnection.on('gift', handleGift);
 
@@ -263,20 +274,41 @@ app.post('/connect', async (req, res) => {
     });
 
     // Connect dengan timeout 15 detik
-    const connectPromise = tiktokConnection.connect();
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Connection timeout - pastikan kamu sedang LIVE')), 15000)
-    );
+    let connectResult;
+    try {
+      const connectPromise = tiktokConnection.connect();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Connection timeout - pastikan kamu sedang LIVE')), 15000)
+      );
+      connectResult = await Promise.race([connectPromise, timeoutPromise]);
+    } catch (connectErr) {
+      // Cek apakah error ini fatal atau bisa diabaikan
+      const msg = (connectErr && connectErr.message) || '';
+      // Kalau hanya "Cannot read properties of undefined" tapi connected event sudah trigger, abaikan
+      if (msg.includes('Cannot read properties of undefined')) {
+        console.warn('⚠️ Non-fatal connect warning:', msg);
+        // Tunggu sebentar lalu cek apakah sudah connected
+        await new Promise(r => setTimeout(r, 2000));
+        if (!isConnected) {
+          throw connectErr; // Betul-betul gagal
+        }
+      } else {
+        throw connectErr;
+      }
+    }
 
-    await Promise.race([connectPromise, timeoutPromise]);
     currentUsername = username;
     isConnected = true;
+    console.log(`✅ Connected to @${username}`);
+    broadcast({ type: 'tiktok_connected', username });
 
-    res.json({ success: true, message: `Connected to @${username}` });
+    if (!res.headersSent) {
+      res.json({ success: true, message: `Connected to @${username}` });
+    }
   } catch (err) {
     const errMsg = (err && err.message) || 'Failed to connect';
     console.error('Connect error:', errMsg);
-    // Tetap kirim response agar frontend tidak hang
+    isConnected = false;
     if (!res.headersSent) {
       res.status(500).json({ error: errMsg });
     }
@@ -306,6 +338,15 @@ const path = require('path');
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// ── Save session ID dari helper page ──
+app.post('/save-session', (req, res) => {
+  const { sessionId: sid } = req.body;
+  if (!sid) return res.status(400).json({ error: 'No sessionId' });
+  sessionId = sid;
+  console.log('🔑 Session ID saved via helper page');
+  res.json({ success: true });
 });
 
 const PORT = process.env.PORT || 3000;
